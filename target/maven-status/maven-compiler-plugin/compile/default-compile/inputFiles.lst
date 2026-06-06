@@ -1,0 +1,16 @@
+C:\Projects\aspcs-backend\src\main\java\com\aspcs\config\AdminInitializer.java
+C:\Projects\aspcs-backend\src\main\java\com\aspcs\auth\entity\AdminUser.java
+C:\Projects\aspcs-backend\src\main\java\com\aspcs\security\JwtAuthFilter.java
+C:\Projects\aspcs-backend\src\main\java\com\aspcs\security\JwtService.java
+C:\Projects\aspcs-backend\src\main\java\com\aspcs\auth\AuthService.java
+C:\Projects\aspcs-backend\src\main\java\com\aspcs\auth\AuthController.java
+C:\Projects\aspcs-backend\src\main\java\com\aspcs\security\SecurityConfig.java
+C:\Projects\aspcs-backend\src\main\java\com\aspcs\auth\AdminUserRepository.java
+C:\Projects\aspcs-backend\src\main\java\com\aspcs\auth\AuthDTOs.java
+C:\Projects\aspcs-backend\src\main\java\com\aspcs\common\GlobalExceptionHandler.java
+C:\Projects\aspcs-backend\src\main\java\com\aspcs\security\AppConfig.java
+C:\Projects\aspcs-backend\src\main\java\com\aspcs\gallery\GalleryModule.java
+C:\Projects\aspcs-backend\src\main\java\com\aspcs\common\ApiResponse.java
+C:\Projects\aspcs-backend\src\main\java\com\aspcs\notice\NoticeModule.java
+C:\Projects\aspcs-backend\src\main\java\com\aspcs\AspcsApplication.java
+C:\Projects\aspcs-backend\src\main\java\com\aspcs\admissions\AdmissionsModule.java
