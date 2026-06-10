@@ -15,7 +15,6 @@
   <artifactId>aspcs-backend</artifactId>
   <version>1.0.0</version>
   <name>aspcs-backend</name>
-  <description>ASPCS School Website Backend API</description>
 
   <properties>
     <java.version>21</java.version>
@@ -46,6 +45,16 @@
       <groupId>org.postgresql</groupId>
       <artifactId>postgresql</artifactId>
       <scope>runtime</scope>
+    </dependency>
+
+    <!-- Flyway — Database Migrations -->
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-database-postgresql</artifactId>
     </dependency>
 
     <!-- JWT -->
