@@ -4,24 +4,26 @@ import com.aspcs.common.ApiResponse;
 import jakarta.persistence.*;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import org.springframework.data.domain.*;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.*;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 // ─── Entity ──────────────────────────────────────────────────────────────────
 @Entity
 @Table(name = "notices")
-@Getter @Setter @Builder
-@NoArgsConstructor @AllArgsConstructor
+@Getter
+@Setter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 class Notice {
 
     @Id
@@ -34,17 +36,17 @@ class Notice {
     @Column(columnDefinition = "TEXT")
     private String description;
 
-    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private Category category;
+    @Builder.Default
+    private String category = "GENERAL";
 
+    @Column(name = "pdf_url")
     private String pdfUrl;
+
+    @Column(name = "image_url")
     private String imageUrl;
 
-    @Column(nullable = false)
     private boolean important;
-
-    @Column(nullable = false)
     private boolean published;
 
     @Column(name = "published_at")
@@ -62,34 +64,35 @@ class Notice {
     @PrePersist
     protected void onCreate() {
         createdAt = updatedAt = LocalDateTime.now();
-        if (published && publishedAt == null) publishedAt = LocalDateTime.now();
     }
 
     @PreUpdate
     protected void onUpdate() {
         updatedAt = LocalDateTime.now();
     }
-
-    enum Category { ACADEMIC, EXAM, HOLIDAY, ADMISSION, GENERAL, URGENT }
 }
 
-// ─── DTOs ────────────────────────────────────────────────────────────────────
-class CreateNoticeRequest {
+// ─── DTO ─────────────────────────────────────────────────────────────────────
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+class NoticeRequest {
     @NotBlank(message = "Title is required")
-    public String title;
-    public String description;
-    @NotNull(message = "Category is required")
-    public Notice.Category category;
-    public String  pdfUrl;
-    public boolean important;
-    public LocalDateTime expiresAt;
+    private String title;
+    private String description;
+    private String category;
+    private String pdfUrl;
+    private String imageUrl;
+    private boolean important;
+    private boolean published;
 }
 
 // ─── Repository ──────────────────────────────────────────────────────────────
 interface NoticeRepository extends JpaRepository<Notice, UUID> {
-    Page<Notice> findByPublishedTrueOrderByPublishedAtDesc(Pageable pageable);
-    Page<Notice> findByCategoryAndPublishedTrueOrderByPublishedAtDesc(
-            Notice.Category category, Pageable pageable);
+    Page<Notice> findByPublishedTrueOrderByCreatedAtDesc(Pageable pageable);
+    Page<Notice> findAllByOrderByCreatedAtDesc(Pageable pageable);
+    List<Notice> findTop5ByPublishedTrueOrderByCreatedAtDesc();
 }
 
 // ─── Service ─────────────────────────────────────────────────────────────────
@@ -99,17 +102,16 @@ class NoticeService {
 
     private final NoticeRepository repo;
 
-    public Page<Notice> getPublished(int page, int size, String category) {
-        Pageable pageable = PageRequest.of(page, size, Sort.by("publishedAt").descending());
-        if (category != null && !category.isBlank()) {
-            return repo.findByCategoryAndPublishedTrueOrderByPublishedAtDesc(
-                    Notice.Category.valueOf(category.toUpperCase()), pageable);
-        }
-        return repo.findByPublishedTrueOrderByPublishedAtDesc(pageable);
+    public Page<Notice> getAll(int page, int size) {
+        return repo.findAllByOrderByCreatedAtDesc(PageRequest.of(page, size));
     }
 
-    public Page<Notice> getAll(int page, int size) {
-        return repo.findAll(PageRequest.of(page, size, Sort.by("createdAt").descending()));
+    public Page<Notice> getPublished(int page, int size) {
+        return repo.findByPublishedTrueOrderByCreatedAtDesc(PageRequest.of(page, size));
+    }
+
+    public List<Notice> getLatest() {
+        return repo.findTop5ByPublishedTrueOrderByCreatedAtDesc();
     }
 
     public Notice getById(UUID id) {
@@ -117,27 +119,36 @@ class NoticeService {
                 .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException("Notice not found"));
     }
 
-    public Notice create(CreateNoticeRequest req) {
+    public Notice create(NoticeRequest req) {
         Notice notice = Notice.builder()
-                .title(req.title)
-                .description(req.description)
-                .category(req.category)
-                .pdfUrl(req.pdfUrl)
-                .important(req.important)
-                .published(false)
-                .expiresAt(req.expiresAt)
+                .title(req.getTitle())
+                .description(req.getDescription())
+                .category(req.getCategory() != null ? req.getCategory() : "GENERAL")
+                .pdfUrl(req.getPdfUrl())
+                .imageUrl(req.getImageUrl())
+                .important(req.isImportant())
+                .published(req.isPublished())
                 .build();
+
+        if (req.isPublished()) {
+            notice.setPublishedAt(LocalDateTime.now());
+        }
         return repo.save(notice);
     }
 
-    public Notice update(UUID id, CreateNoticeRequest req) {
+    public Notice update(UUID id, NoticeRequest req) {
         Notice notice = getById(id);
-        notice.setTitle(req.title);
-        notice.setDescription(req.description);
-        notice.setCategory(req.category);
-        notice.setPdfUrl(req.pdfUrl);
-        notice.setImportant(req.important);
-        notice.setExpiresAt(req.expiresAt);
+        notice.setTitle(req.getTitle());
+        notice.setDescription(req.getDescription());
+        notice.setCategory(req.getCategory() != null ? req.getCategory() : notice.getCategory());
+        notice.setPdfUrl(req.getPdfUrl());
+        notice.setImageUrl(req.getImageUrl());
+        notice.setImportant(req.isImportant());
+
+        if (req.isPublished() && !notice.isPublished()) {
+            notice.setPublishedAt(LocalDateTime.now());
+        }
+        notice.setPublished(req.isPublished());
         return repo.save(notice);
     }
 
@@ -163,22 +174,21 @@ class NoticeController {
 
     private final NoticeService service;
 
-    // Public
-    @GetMapping
+    // Public endpoints
+    @GetMapping("/public")
     public ResponseEntity<ApiResponse<Page<Notice>>> getPublished(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
-            @RequestParam(required = false) String category) {
-        return ResponseEntity.ok(ApiResponse.ok(service.getPublished(page, size, category)));
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(ApiResponse.ok(service.getPublished(page, size)));
     }
 
-    @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<Notice>> getById(@PathVariable UUID id) {
-        return ResponseEntity.ok(ApiResponse.ok(service.getById(id)));
+    @GetMapping("/public/latest")
+    public ResponseEntity<ApiResponse<List<Notice>>> getLatest() {
+        return ResponseEntity.ok(ApiResponse.ok(service.getLatest()));
     }
 
-    // Admin only
-    @GetMapping("/admin/all")
+    // Admin endpoints
+    @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','EDITOR')")
     public ResponseEntity<ApiResponse<Page<Notice>>> getAll(
             @RequestParam(defaultValue = "0") int page,
@@ -186,9 +196,15 @@ class NoticeController {
         return ResponseEntity.ok(ApiResponse.ok(service.getAll(page, size)));
     }
 
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','EDITOR')")
+    public ResponseEntity<ApiResponse<Notice>> getById(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.ok(service.getById(id)));
+    }
+
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','EDITOR')")
-    public ResponseEntity<ApiResponse<Notice>> create(@Valid @RequestBody CreateNoticeRequest req) {
+    public ResponseEntity<ApiResponse<Notice>> create(@Valid @RequestBody NoticeRequest req) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.ok(service.create(req), "Notice created"));
     }
@@ -196,21 +212,20 @@ class NoticeController {
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','EDITOR')")
     public ResponseEntity<ApiResponse<Notice>> update(
-            @PathVariable UUID id,
-            @Valid @RequestBody CreateNoticeRequest req) {
+            @PathVariable UUID id, @Valid @RequestBody NoticeRequest req) {
         return ResponseEntity.ok(ApiResponse.ok(service.update(id, req), "Notice updated"));
     }
 
-    @PatchMapping("/{id}/toggle-publish")
-    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    @PatchMapping("/{id}/publish")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','EDITOR')")
     public ResponseEntity<ApiResponse<Notice>> togglePublish(@PathVariable UUID id) {
-        return ResponseEntity.ok(ApiResponse.ok(service.togglePublish(id)));
+        return ResponseEntity.ok(ApiResponse.ok(service.togglePublish(id), "Status updated"));
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable UUID id) {
         service.delete(id);
-        return ResponseEntity.ok(ApiResponse.ok(null, "Notice deleted"));
+        return ResponseEntity.ok(ApiResponse.ok(null, "Deleted"));
     }
 }

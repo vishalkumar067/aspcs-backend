@@ -13,8 +13,11 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "admin_users")
-@Getter @Setter @Builder
-@NoArgsConstructor @AllArgsConstructor
+@Getter
+@Setter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class AdminUser implements UserDetails {
 
     @Id
@@ -30,27 +33,40 @@ public class AdminUser implements UserDetails {
     @Column(nullable = false)
     private String password;
 
-    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private Role role;
+    @Builder.Default
+    private String role = "EDITOR";  // SUPER_ADMIN, ADMIN, EDITOR
 
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+
     @PrePersist
     protected void onCreate() {
-        createdAt = LocalDateTime.now();
+        createdAt = updatedAt = LocalDateTime.now();
     }
 
-    // ─── UserDetails impl ────────────────────────────────────────────────
-    @Override public Collection<? extends GrantedAuthority> getAuthorities() {
-        return List.of(new SimpleGrantedAuthority("ROLE_" + role.name()));
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
     }
-    @Override public String getUsername()            { return email; }
-    @Override public boolean isAccountNonExpired()   { return true; }
-    @Override public boolean isAccountNonLocked()    { return true; }
+
+    // ─── UserDetails ─────────────────────────────────────────────────────────
+    @Override
+    public String getUsername() { return email; }
+
+    @Override
+    public String getPassword() { return password; }
+
+    @Override
+    public Collection<? extends GrantedAuthority> getAuthorities() {
+        return List.of(new SimpleGrantedAuthority("ROLE_" + role));
+    }
+
+    @Override public boolean isAccountNonExpired()    { return true; }
+    @Override public boolean isAccountNonLocked()     { return true; }
     @Override public boolean isCredentialsNonExpired(){ return true; }
-    @Override public boolean isEnabled()             { return true; }
-
-    public enum Role { SUPER_ADMIN, ADMIN, EDITOR }
+    @Override public boolean isEnabled()              { return true; }
 }

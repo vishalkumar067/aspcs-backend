@@ -1,17 +1,17 @@
 package com.aspcs.gallery;
 
 import com.aspcs.common.ApiResponse;
+import com.aspcs.upload.CloudinaryService;
 import jakarta.persistence.*;
-import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import lombok.*;
 import org.springframework.data.domain.*;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.*;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -19,11 +19,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-// ─── Entities ─────────────────────────────────────────────────────────────────
+// ─── GalleryAlbum Entity ─────────────────────────────────────────────────────
 @Entity
 @Table(name = "gallery_albums")
-@Getter @Setter @Builder
-@NoArgsConstructor @AllArgsConstructor
+@Getter
+@Setter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 class GalleryAlbum {
 
     @Id
@@ -36,19 +39,16 @@ class GalleryAlbum {
     @Column(columnDefinition = "TEXT")
     private String description;
 
-    @Enumerated(EnumType.STRING)
-    private Category category;
+    @Builder.Default
+    private String category = "EVENTS";
 
+    @Column(name = "cover_image_url")
     private String coverImageUrl;
+
     private boolean published;
 
     @Column(name = "event_date")
     private LocalDate eventDate;
-
-    @OneToMany(mappedBy = "album", cascade = CascadeType.ALL, orphanRemoval = true)
-    @OrderBy("displayOrder ASC")
-    @Builder.Default
-    private List<GalleryImage> images = new ArrayList<>();
 
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
@@ -56,60 +56,64 @@ class GalleryAlbum {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    @OneToMany(mappedBy = "albumId", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @Builder.Default
+    private List<GalleryImage> images = new ArrayList<>();
+
     @PrePersist  protected void onCreate() { createdAt = updatedAt = LocalDateTime.now(); }
     @PreUpdate   protected void onUpdate() { updatedAt = LocalDateTime.now(); }
-
-    enum Category { EVENTS, SPORTS, ACADEMICS, INFRASTRUCTURE, CULTURAL, GRADUATION }
 }
 
+// ─── GalleryImage Entity ─────────────────────────────────────────────────────
 @Entity
 @Table(name = "gallery_images")
-@Getter @Setter @Builder
-@NoArgsConstructor @AllArgsConstructor
+@Getter
+@Setter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 class GalleryImage {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "album_id", nullable = false)
-    private GalleryAlbum album;
+    @Column(name = "album_id")
+    private UUID albumId;
 
     @Column(nullable = false)
     private String url;
 
+    @Column(name = "thumbnail_url")
     private String thumbnailUrl;
+
+    @Column(name = "public_id")
+    private String publicId;
+
     private String caption;
     private String alt;
-    private int    width;
-    private int    height;
+    private Integer width;
+    private Integer height;
 
     @Column(name = "display_order")
-    private int displayOrder;
+    @Builder.Default
+    private int displayOrder = 0;
+
+    @Column(name = "created_at", updatable = false)
+    private LocalDateTime createdAt;
+
+    @PrePersist protected void onCreate() { createdAt = LocalDateTime.now(); }
 }
 
-// ─── DTOs ────────────────────────────────────────────────────────────────────
-class CreateAlbumRequest {
-    @NotBlank public String title;
-    public String description;
-    public GalleryAlbum.Category category;
-    public LocalDate eventDate;
-}
-
-class AddImagesRequest {
-    public List<String> imageUrls;
-}
-
-// ─── Repositories ────────────────────────────────────────────────────────────
+// ─── Repositories ─────────────────────────────────────────────────────────────
 interface GalleryAlbumRepository extends JpaRepository<GalleryAlbum, UUID> {
     Page<GalleryAlbum> findByPublishedTrueOrderByCreatedAtDesc(Pageable pageable);
-    Page<GalleryAlbum> findByCategoryAndPublishedTrueOrderByCreatedAtDesc(
-            GalleryAlbum.Category category, Pageable pageable);
+    Page<GalleryAlbum> findAllByOrderByCreatedAtDesc(Pageable pageable);
 }
 
 interface GalleryImageRepository extends JpaRepository<GalleryImage, UUID> {
     List<GalleryImage> findByAlbumIdOrderByDisplayOrderAsc(UUID albumId);
+    void deleteByAlbumId(UUID albumId);
 }
 
 // ─── Service ─────────────────────────────────────────────────────────────────
@@ -119,14 +123,14 @@ class GalleryService {
 
     private final GalleryAlbumRepository albumRepo;
     private final GalleryImageRepository imageRepo;
+    private final CloudinaryService       cloudinary;
 
-    public Page<GalleryAlbum> getPublished(int page, int size, String category) {
-        Pageable p = PageRequest.of(page, size);
-        if (category != null && !category.isBlank()) {
-            return albumRepo.findByCategoryAndPublishedTrueOrderByCreatedAtDesc(
-                    GalleryAlbum.Category.valueOf(category.toUpperCase()), p);
-        }
-        return albumRepo.findByPublishedTrueOrderByCreatedAtDesc(p);
+    public Page<GalleryAlbum> getAll(int page, int size) {
+        return albumRepo.findAllByOrderByCreatedAtDesc(PageRequest.of(page, size));
+    }
+
+    public Page<GalleryAlbum> getPublished(int page, int size) {
+        return albumRepo.findByPublishedTrueOrderByCreatedAtDesc(PageRequest.of(page, size));
     }
 
     public GalleryAlbum getById(UUID id) {
@@ -134,46 +138,63 @@ class GalleryService {
                 .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException("Album not found"));
     }
 
-    public GalleryAlbum create(CreateAlbumRequest req) {
+    public GalleryAlbum createAlbum(String title, String description, String category, boolean published) {
         GalleryAlbum album = GalleryAlbum.builder()
-                .title(req.title)
-                .description(req.description)
-                .category(req.category)
-                .eventDate(req.eventDate)
-                .published(false)
+                .title(title)
+                .description(description)
+                .category(category != null ? category : "EVENTS")
+                .published(published)
                 .build();
         return albumRepo.save(album);
     }
 
-    public GalleryAlbum addImages(UUID albumId, List<String> imageUrls) {
-        GalleryAlbum album  = getById(albumId);
-        int order = album.getImages().size();
-        for (String url : imageUrls) {
-            GalleryImage image = GalleryImage.builder()
-                    .album(album)
-                    .url(url)
-                    .thumbnailUrl(url)
-                    .alt(album.getTitle())
-                    .displayOrder(order++)
-                    .build();
-            album.getImages().add(image);
-        }
-        if (album.getCoverImageUrl() == null && !imageUrls.isEmpty()) {
-            album.setCoverImageUrl(imageUrls.get(0));
-        }
+    public GalleryAlbum updateAlbum(UUID id, String title, String description,
+                                    String category, boolean published) {
+        GalleryAlbum album = getById(id);
+        album.setTitle(title);
+        album.setDescription(description);
+        album.setCategory(category != null ? category : album.getCategory());
+        album.setPublished(published);
         return albumRepo.save(album);
+    }
+
+    public GalleryImage addImage(UUID albumId, MultipartFile file, String caption) throws Exception {
+        GalleryAlbum album = getById(albumId);
+        String url = cloudinary.uploadImage(file, "gallery");
+
+        GalleryImage image = GalleryImage.builder()
+                .albumId(albumId)
+                .url(url)
+                .caption(caption)
+                .build();
+
+        GalleryImage saved = imageRepo.save(image);
+
+        // set cover if first image
+        if (album.getCoverImageUrl() == null) {
+            album.setCoverImageUrl(url);
+            albumRepo.save(album);
+        }
+
+        return saved;
+    }
+
+    public List<GalleryImage> getImages(UUID albumId) {
+        return imageRepo.findByAlbumIdOrderByDisplayOrderAsc(albumId);
+    }
+
+    public void deleteImage(UUID imageId) {
+        imageRepo.deleteById(imageId);
+    }
+
+    public void deleteAlbum(UUID id) {
+        albumRepo.deleteById(id);
     }
 
     public GalleryAlbum togglePublish(UUID id) {
         GalleryAlbum album = getById(id);
         album.setPublished(!album.isPublished());
         return albumRepo.save(album);
-    }
-
-    public void deleteAlbum(UUID id) { albumRepo.deleteById(id); }
-
-    public void deleteImage(UUID albumId, UUID imageId) {
-        imageRepo.deleteById(imageId);
     }
 }
 
@@ -185,53 +206,81 @@ class GalleryController {
 
     private final GalleryService service;
 
-    @GetMapping("/albums")
+    @GetMapping("/public")
     public ResponseEntity<ApiResponse<Page<GalleryAlbum>>> getPublished(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "12") int size,
-            @RequestParam(required = false) String category) {
-        return ResponseEntity.ok(ApiResponse.ok(service.getPublished(page, size, category)));
+            @RequestParam(defaultValue = "12") int size) {
+        return ResponseEntity.ok(ApiResponse.ok(service.getPublished(page, size)));
     }
 
-    @GetMapping("/albums/{id}")
+    @GetMapping
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','EDITOR')")
+    public ResponseEntity<ApiResponse<Page<GalleryAlbum>>> getAll(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ResponseEntity.ok(ApiResponse.ok(service.getAll(page, size)));
+    }
+
+    @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<GalleryAlbum>> getById(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.ok(service.getById(id)));
     }
 
-    @PostMapping("/albums")
+    @GetMapping("/{id}/images")
+    public ResponseEntity<ApiResponse<List<GalleryImage>>> getImages(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.ok(service.getImages(id)));
+    }
+
+    @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','EDITOR')")
-    public ResponseEntity<ApiResponse<GalleryAlbum>> create(
-            @Valid @RequestBody CreateAlbumRequest req) {
+    public ResponseEntity<ApiResponse<GalleryAlbum>> createAlbum(
+            @RequestParam String title,
+            @RequestParam(required = false) String description,
+            @RequestParam(required = false) String category,
+            @RequestParam(defaultValue = "false") boolean published) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.ok(service.create(req), "Album created"));
+                .body(ApiResponse.ok(service.createAlbum(title, description, category, published)));
     }
 
-    @PostMapping("/albums/{id}/images")
+    @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','EDITOR')")
-    public ResponseEntity<ApiResponse<GalleryAlbum>> addImages(
+    public ResponseEntity<ApiResponse<GalleryAlbum>> updateAlbum(
             @PathVariable UUID id,
-            @RequestBody AddImagesRequest req) {
-        return ResponseEntity.ok(ApiResponse.ok(service.addImages(id, req.imageUrls)));
+            @RequestParam String title,
+            @RequestParam(required = false) String description,
+            @RequestParam(required = false) String category,
+            @RequestParam(defaultValue = "false") boolean published) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                service.updateAlbum(id, title, description, category, published)));
     }
 
-    @PatchMapping("/albums/{id}/toggle-publish")
+    @PostMapping("/{id}/images")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','EDITOR')")
+    public ResponseEntity<ApiResponse<GalleryImage>> addImage(
+            @PathVariable UUID id,
+            @RequestParam MultipartFile file,
+            @RequestParam(required = false) String caption) throws Exception {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.ok(service.addImage(id, file, caption)));
+    }
+
+    @DeleteMapping("/images/{imageId}")
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<Void>> deleteImage(@PathVariable UUID imageId) {
+        service.deleteImage(imageId);
+        return ResponseEntity.ok(ApiResponse.ok(null, "Image deleted"));
+    }
+
+    @PatchMapping("/{id}/publish")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','EDITOR')")
     public ResponseEntity<ApiResponse<GalleryAlbum>> togglePublish(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.ok(service.togglePublish(id)));
     }
 
-    @DeleteMapping("/albums/{id}")
+    @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
-    public ResponseEntity<ApiResponse<Void>> deleteAlbum(@PathVariable UUID id) {
+    public ResponseEntity<ApiResponse<Void>> delete(@PathVariable UUID id) {
         service.deleteAlbum(id);
-        return ResponseEntity.ok(ApiResponse.ok(null, "Album deleted"));
-    }
-
-    @DeleteMapping("/albums/{albumId}/images/{imageId}")
-    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
-    public ResponseEntity<ApiResponse<Void>> deleteImage(
-            @PathVariable UUID albumId, @PathVariable UUID imageId) {
-        service.deleteImage(albumId, imageId);
-        return ResponseEntity.ok(ApiResponse.ok(null, "Image deleted"));
+        return ResponseEntity.ok(ApiResponse.ok(null, "Deleted"));
     }
 }

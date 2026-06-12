@@ -4,6 +4,7 @@ import com.cloudinary.Cloudinary;
 import com.cloudinary.utils.ObjectUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -17,48 +18,48 @@ public class CloudinaryService {
 
     private final Cloudinary cloudinary;
 
-    // ─── Upload image ────────────────────────────────────────────────────────
-    public UploadResult uploadImage(MultipartFile file, String folder) throws IOException {
-        Map<?, ?> result = cloudinary.uploader().upload(
+    @Value("${cloudinary.cloud-name:dug0g6tli}")
+    private String cloudName;
+
+    public String uploadImage(MultipartFile file, String folder) throws IOException {
+        log.info("Uploading image to Cloudinary folder: {}", folder);
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> result = cloudinary.uploader().upload(
+                    file.getBytes(),
+                    ObjectUtils.asMap(
+                            "folder", folder,
+                            "resource_type", "image"
+                    )
+            );
+            String url = (String) result.get("secure_url");
+            log.info("Uploaded to Cloudinary: {}", url);
+            return url;
+        } catch (IOException e) {
+            log.error("Cloudinary upload failed: {}", e.getMessage());
+            throw e;
+        }
+    }
+
+    public String uploadFile(MultipartFile file, String folder) throws IOException {
+        log.info("Uploading file to Cloudinary folder: {}", folder);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = cloudinary.uploader().upload(
                 file.getBytes(),
                 ObjectUtils.asMap(
-                        "folder",          "aspcs/" + folder,
-                        "resource_type",   "image",
-                        "transformation",  "q_auto,f_auto"
+                        "folder", folder,
+                        "resource_type", "raw"
                 )
         );
-
-        return new UploadResult(
-                (String) result.get("public_id"),
-                (String) result.get("secure_url"),
-                buildThumbnailUrl((String) result.get("public_id")),
-                ((Number) result.get("width")).intValue(),
-                ((Number) result.get("height")).intValue(),
-                ((Number) result.get("bytes")).longValue()
-        );
+        return (String) result.get("secure_url");
     }
 
-    // ─── Delete image ────────────────────────────────────────────────────────
-    public void deleteImage(String publicId) throws IOException {
-        cloudinary.uploader().destroy(publicId, ObjectUtils.emptyMap());
-        log.info("Deleted image: {}", publicId);
+    public void deleteFile(String publicId) {
+        try {
+            cloudinary.uploader().destroy(publicId, ObjectUtils.emptyMap());
+            log.info("Deleted from Cloudinary: {}", publicId);
+        } catch (IOException e) {
+            log.warn("Failed to delete from Cloudinary: {}", e.getMessage());
+        }
     }
-
-    // ─── Build thumbnail URL ─────────────────────────────────────────────────
-    private String buildThumbnailUrl(String publicId) {
-        return cloudinary.url()
-                .transformation(new com.cloudinary.Transformation()
-                        .width(400).height(300).crop("fill").quality("auto"))
-                .generate(publicId);
-    }
-
-    // ─── Upload Result DTO ───────────────────────────────────────────────────
-    public record UploadResult(
-            String publicId,
-            String url,
-            String thumbnailUrl,
-            int    width,
-            int    height,
-            long   bytes
-    ) {}
 }
