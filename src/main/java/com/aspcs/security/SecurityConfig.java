@@ -17,9 +17,6 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.web.cors.CorsConfigurationSource;
-
-import static org.springframework.security.config.Customizer.withDefaults;
 
 @Configuration
 @EnableWebSecurity
@@ -27,51 +24,33 @@ import static org.springframework.security.config.Customizer.withDefaults;
 @RequiredArgsConstructor
 public class SecurityConfig {
 
-    private final AuthService           authService;
-    private final JwtAuthFilter         jwtAuthFilter;
-    private final PasswordEncoder       passwordEncoder;
-    private final CorsConfigurationSource corsConfigurationSource;
+    private final AuthService     authService;
+    private final JwtAuthFilter   jwtAuthFilter;
+    private final PasswordEncoder passwordEncoder;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-            // ── CORS must come FIRST so preflight OPTIONS requests are handled ──
-            .cors(cors -> cors.configurationSource(corsConfigurationSource))
-
-            // ── Disable CSRF (stateless JWT API) ──
+            // GlobalCorsFilter handles CORS upstream — disable Spring Security's own CORS handling
+            .cors(AbstractHttpConfigurer::disable)
             .csrf(AbstractHttpConfigurer::disable)
-
-            // ── Session management ──
-            .sessionManagement(session ->
-                session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-
-            // ── Route permissions ──
+            .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-
-                // Allow OPTIONS preflight for ALL paths
+                // OPTIONS is already short-circuited by GlobalCorsFilter, but permit here too
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-                // Public auth
+                // Public endpoints
                 .requestMatchers("/auth/**").permitAll()
-
-                // Public read endpoints
-                .requestMatchers(HttpMethod.GET, "/notices/public/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/notices/public").permitAll()
-                .requestMatchers(HttpMethod.GET, "/gallery/public/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/gallery/public").permitAll()
-                .requestMatchers(HttpMethod.GET, "/events/public/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/events").permitAll()
-                .requestMatchers(HttpMethod.GET, "/careers/jobs").permitAll()
-                .requestMatchers(HttpMethod.GET, "/careers/jobs/**").permitAll()
+                .requestMatchers(HttpMethod.GET,  "/notices/public/**").permitAll()
+                .requestMatchers(HttpMethod.GET,  "/gallery/public/**").permitAll()
+                .requestMatchers(HttpMethod.GET,  "/events/**").permitAll()
+                .requestMatchers(HttpMethod.GET,  "/careers/jobs/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/careers/jobs/*/apply").permitAll()
                 .requestMatchers(HttpMethod.POST, "/admissions").permitAll()
                 .requestMatchers(HttpMethod.POST, "/tc/submit").permitAll()
 
-                // Everything else requires authentication
                 .anyRequest().authenticated()
             )
-
-            // ── JWT filter ──
             .authenticationProvider(authenticationProvider())
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
@@ -87,8 +66,8 @@ public class SecurityConfig {
     }
 
     @Bean
-    public AuthenticationManager authenticationManager(
-            AuthenticationConfiguration config) throws Exception {
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration config)
+            throws Exception {
         return config.getAuthenticationManager();
     }
 }
