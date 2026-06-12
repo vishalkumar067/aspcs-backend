@@ -20,6 +20,11 @@ import java.util.UUID;
 @AllArgsConstructor
 public class AdminUser implements UserDetails {
 
+    // ─── Role enum (keeps AuthService + AuthDTOs working) ────────────────────
+    public enum Role {
+        SUPER_ADMIN, ADMIN, EDITOR
+    }
+
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
@@ -33,9 +38,10 @@ public class AdminUser implements UserDetails {
     @Column(nullable = false)
     private String password;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     @Builder.Default
-    private String role = "EDITOR";  // SUPER_ADMIN, ADMIN, EDITOR
+    private Role role = Role.EDITOR;
 
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
@@ -62,11 +68,11 @@ public class AdminUser implements UserDetails {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return List.of(new SimpleGrantedAuthority("ROLE_" + role));
+        return List.of(new SimpleGrantedAuthority("ROLE_" + role.name()));
     }
 
-    @Override public boolean isAccountNonExpired()    { return true; }
-    @Override public boolean isAccountNonLocked()     { return true; }
-    @Override public boolean isCredentialsNonExpired(){ return true; }
-    @Override public boolean isEnabled()              { return true; }
+    @Override public boolean isAccountNonExpired()     { return true; }
+    @Override public boolean isAccountNonLocked()      { return true; }
+    @Override public boolean isCredentialsNonExpired() { return true; }
+    @Override public boolean isEnabled()               { return true; }
 }
