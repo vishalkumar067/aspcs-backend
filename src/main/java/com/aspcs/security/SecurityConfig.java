@@ -1,6 +1,7 @@
 package com.aspcs.security;
 
-import org.springframework.beans.factory.annotation.Value;
+import com.aspcs.auth.AuthService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -13,80 +14,81 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
-import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import java.util.Arrays;
-import java.util.List;
+import static org.springframework.security.config.Customizer.withDefaults;
 
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
+@RequiredArgsConstructor
 public class SecurityConfig {
 
-    private final JwtAuthFilter      jwtAuthFilter;
-    private final UserDetailsService userDetailsService;
-    private final PasswordEncoder    passwordEncoder;
-
-    public SecurityConfig(JwtAuthFilter jwtAuthFilter,
-                          UserDetailsService userDetailsService,
-                          PasswordEncoder passwordEncoder) {
-        this.jwtAuthFilter      = jwtAuthFilter;
-        this.userDetailsService = userDetailsService;
-        this.passwordEncoder    = passwordEncoder;
-    }
-
-    private static final String[] PUBLIC_GET  = {"/notices/**","/gallery/**","/events/**","/cms/**"};
-    private static final String[] PUBLIC_POST = {"/auth/login","/auth/refresh","/admissions/inquiries"};
+    private final AuthService           authService;
+    private final JwtAuthFilter         jwtAuthFilter;
+    private final PasswordEncoder       passwordEncoder;
+    private final CorsConfigurationSource corsConfigurationSource;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        return http
-                .csrf(AbstractHttpConfigurer::disable)
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.GET,  PUBLIC_GET).permitAll()
-                        .requestMatchers(HttpMethod.POST, PUBLIC_POST).permitAll()
-                        .anyRequest().authenticated()
-                )
-                .authenticationProvider(authenticationProvider())
-                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
-                .build();
-    }
+        http
+            // ── CORS must come FIRST so preflight OPTIONS requests are handled ──
+            .cors(cors -> cors.configurationSource(corsConfigurationSource))
 
-    @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration config = new CorsConfiguration();
+            // ── Disable CSRF (stateless JWT API) ──
+            .csrf(AbstractHttpConfigurer::disable)
 
-        // Allow all origins — update this list when you want to restrict
-        config.setAllowedOriginPatterns(List.of("*"));
-        config.setAllowedMethods(Arrays.asList("GET","POST","PUT","PATCH","DELETE","OPTIONS"));
-        config.setAllowedHeaders(List.of("*"));
-        config.setAllowCredentials(false);
-        config.setMaxAge(3600L);
+            // ── Session management ──
+            .sessionManagement(session ->
+                session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", config);
-        return source;
+            // ── Route permissions ──
+            .authorizeHttpRequests(auth -> auth
+
+                // Allow OPTIONS preflight for ALL paths
+                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+
+                // Public auth
+                .requestMatchers("/auth/**").permitAll()
+
+                // Public read endpoints
+                .requestMatchers(HttpMethod.GET, "/notices/public/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/notices/public").permitAll()
+                .requestMatchers(HttpMethod.GET, "/gallery/public/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/gallery/public").permitAll()
+                .requestMatchers(HttpMethod.GET, "/events/public/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/events").permitAll()
+                .requestMatchers(HttpMethod.GET, "/careers/jobs").permitAll()
+                .requestMatchers(HttpMethod.GET, "/careers/jobs/**").permitAll()
+                .requestMatchers(HttpMethod.POST, "/careers/jobs/*/apply").permitAll()
+                .requestMatchers(HttpMethod.POST, "/admissions").permitAll()
+                .requestMatchers(HttpMethod.POST, "/tc/submit").permitAll()
+
+                // Everything else requires authentication
+                .anyRequest().authenticated()
+            )
+
+            // ── JWT filter ──
+            .authenticationProvider(authenticationProvider())
+            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+
+        return http.build();
     }
 
     @Bean
     public AuthenticationProvider authenticationProvider() {
         DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
-        provider.setUserDetailsService(userDetailsService);
+        provider.setUserDetailsService(authService);
         provider.setPasswordEncoder(passwordEncoder);
         return provider;
     }
 
     @Bean
-    public AuthenticationManager authenticationManager(AuthenticationConfiguration config)
-            throws Exception {
+    public AuthenticationManager authenticationManager(
+            AuthenticationConfiguration config) throws Exception {
         return config.getAuthenticationManager();
     }
 }
