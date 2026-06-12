@@ -31,15 +31,11 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-            // GlobalCorsFilter handles CORS upstream — disable Spring Security's own CORS handling
-            .cors(AbstractHttpConfigurer::disable)
+            .cors(AbstractHttpConfigurer::disable)   // CorsConfig FilterRegistrationBean handles it
             .csrf(AbstractHttpConfigurer::disable)
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                // OPTIONS is already short-circuited by GlobalCorsFilter, but permit here too
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-
-                // Public endpoints
                 .requestMatchers("/auth/**").permitAll()
                 .requestMatchers(HttpMethod.GET,  "/notices/public/**").permitAll()
                 .requestMatchers(HttpMethod.GET,  "/gallery/public/**").permitAll()
@@ -48,7 +44,6 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/careers/jobs/*/apply").permitAll()
                 .requestMatchers(HttpMethod.POST, "/admissions").permitAll()
                 .requestMatchers(HttpMethod.POST, "/tc/submit").permitAll()
-
                 .anyRequest().authenticated()
             )
             .authenticationProvider(authenticationProvider())
@@ -59,10 +54,10 @@ public class SecurityConfig {
 
     @Bean
     public AuthenticationProvider authenticationProvider() {
-        DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
-        provider.setUserDetailsService(authService);
-        provider.setPasswordEncoder(passwordEncoder);
-        return provider;
+        DaoAuthenticationProvider p = new DaoAuthenticationProvider();
+        p.setUserDetailsService(authService);
+        p.setPasswordEncoder(passwordEncoder);
+        return p;
     }
 
     @Bean
