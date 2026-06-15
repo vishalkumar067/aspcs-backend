@@ -23,7 +23,6 @@ import java.util.UUID;
 @Table(name = "events")
 @Getter
 @Setter
-@Builder
 @NoArgsConstructor
 @AllArgsConstructor
 class Event {
@@ -50,10 +49,8 @@ class Event {
     private String imageUrl;
 
     @Column(name = "is_highlight")
-    @Builder.Default
-    private boolean isHighlight = false;
+    private boolean highlight = false;
 
-    @Builder.Default
     private String category = "ACADEMIC";
 
     @Column(name = "created_at", updatable = false)
@@ -71,6 +68,7 @@ class Event {
 @NoArgsConstructor
 @AllArgsConstructor
 class EventRequest {
+
     @NotBlank(message = "Title is required")
     private String title;
 
@@ -82,14 +80,14 @@ class EventRequest {
     private LocalDate endDate;
     private String venue;
     private String imageUrl;
-    private boolean isHighlight;
+    private boolean highlight;
     private String category;
 }
 
 // ─── Repository ──────────────────────────────────────────────────────────────
 interface EventRepository extends JpaRepository<Event, UUID> {
     Page<Event> findAllByOrderByStartDateDesc(Pageable pageable);
-    List<Event> findByIsHighlightTrueOrderByStartDateDesc();
+    List<Event> findByHighlightTrueOrderByStartDateDesc();
     List<Event> findTop5ByStartDateGreaterThanEqualOrderByStartDateAsc(LocalDate date);
 }
 
@@ -105,7 +103,7 @@ class EventService {
     }
 
     public List<Event> getHighlights() {
-        return repo.findByIsHighlightTrueOrderByStartDateDesc();
+        return repo.findByHighlightTrueOrderByStartDateDesc();
     }
 
     public List<Event> getUpcoming() {
@@ -113,35 +111,34 @@ class EventService {
     }
 
     public Event getById(UUID id) {
-        return repo.findById(id)
-                .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException("Event not found"));
+        return repo.findById(id).orElseThrow(
+                () -> new jakarta.persistence.EntityNotFoundException("Event not found"));
     }
 
     public Event create(EventRequest req) {
-        Event event = Event.builder()
-                .title(req.getTitle())
-                .description(req.getDescription())
-                .startDate(req.getStartDate())
-                .endDate(req.getEndDate())
-                .venue(req.getVenue())
-                .imageUrl(req.getImageUrl())
-                .isHighlight(req.isIsHighlight())
-                .category(req.getCategory() != null ? req.getCategory() : "ACADEMIC")
-                .build();
-        return repo.save(event);
+        Event e = new Event();
+        e.setTitle(req.getTitle());
+        e.setDescription(req.getDescription());
+        e.setStartDate(req.getStartDate());
+        e.setEndDate(req.getEndDate());
+        e.setVenue(req.getVenue());
+        e.setImageUrl(req.getImageUrl());
+        e.setHighlight(req.isHighlight());
+        e.setCategory(req.getCategory() != null ? req.getCategory() : "ACADEMIC");
+        return repo.save(e);
     }
 
     public Event update(UUID id, EventRequest req) {
-        Event event = getById(id);
-        event.setTitle(req.getTitle());
-        event.setDescription(req.getDescription());
-        event.setStartDate(req.getStartDate());
-        event.setEndDate(req.getEndDate());
-        event.setVenue(req.getVenue());
-        event.setImageUrl(req.getImageUrl());
-        event.setHighlight(req.isIsHighlight());
-        if (req.getCategory() != null) event.setCategory(req.getCategory());
-        return repo.save(event);
+        Event e = getById(id);
+        e.setTitle(req.getTitle());
+        e.setDescription(req.getDescription());
+        e.setStartDate(req.getStartDate());
+        e.setEndDate(req.getEndDate());
+        e.setVenue(req.getVenue());
+        e.setImageUrl(req.getImageUrl());
+        e.setHighlight(req.isHighlight());
+        if (req.getCategory() != null) e.setCategory(req.getCategory());
+        return repo.save(e);
     }
 
     public void delete(UUID id) {
@@ -157,10 +154,8 @@ class EventController {
 
     private final EventService service;
 
-    // ── Public endpoints ─────────────────────────────────────────────────────
-
     @GetMapping("/public")
-    public ResponseEntity<ApiResponse<Page<Event>>> getAll(
+    public ResponseEntity<ApiResponse<Page<Event>>> getPublic(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         return ResponseEntity.ok(ApiResponse.ok(service.getAll(page, size)));
@@ -177,24 +172,21 @@ class EventController {
     }
 
     @GetMapping("/public/{id}")
-    public ResponseEntity<ApiResponse<Event>> getById(@PathVariable UUID id) {
+    public ResponseEntity<ApiResponse<Event>> getPublicById(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.ok(service.getById(id)));
     }
 
-    // ── Admin endpoints ──────────────────────────────────────────────────────
-
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','EDITOR')")
-    public ResponseEntity<ApiResponse<Page<Event>>> getAllAdmin(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "100") int size,
-            @RequestParam(required = false) String sort) {
+    public ResponseEntity<ApiResponse<Page<Event>>> getAll(
+            @RequestParam(defaultValue = "0")   int page,
+            @RequestParam(defaultValue = "100") int size) {
         return ResponseEntity.ok(ApiResponse.ok(service.getAll(page, size)));
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','EDITOR')")
-    public ResponseEntity<ApiResponse<Event>> getByIdAdmin(@PathVariable UUID id) {
+    public ResponseEntity<ApiResponse<Event>> getById(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.ok(service.getById(id)));
     }
 
