@@ -183,6 +183,12 @@ class GalleryController {
         return ResponseEntity.ok(ApiResponse.ok(service.getById(id)));
     }
 
+    // Public images — no auth required, used by public gallery page
+    @GetMapping("/public/{id}/images")
+    public ResponseEntity<ApiResponse<List<GalleryImage>>> getPublicImages(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.ok(service.getImages(id)));
+    }
+
     // Admin
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','EDITOR')")
