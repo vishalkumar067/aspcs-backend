@@ -9,8 +9,6 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 
-import java.io.ByteArrayInputStream;
-
 // Result of attempting to send. Always returned, never throws — the caller
 // (ProgressReportService) logs this into communication_logs regardless of
 // success or failure, so a failed send is recorded, not lost.
@@ -54,7 +52,7 @@ class EmailDispatchService {
                     "Regards,\n" + schoolName;
             helper.setText(body, false);
 
-            helper.addAttachment(pdfFileName, new ByteArrayInputStream(pdfBytes), "application/pdf");
+            helper.addAttachment(pdfFileName, new org.springframework.core.io.ByteArrayResource(pdfBytes), "application/pdf");
 
             mailSender.send(message);
 
