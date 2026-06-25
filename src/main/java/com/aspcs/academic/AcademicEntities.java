@@ -22,7 +22,7 @@ class AcademicSession {
 // ─── Subject ─────────────────────────────────────────────────
 @Entity @Table(name = "subjects")
 @Getter @Setter @Builder @NoArgsConstructor @AllArgsConstructor
-class Subject {
+public class Subject {
     @Id @GeneratedValue(strategy = GenerationType.UUID) private UUID id;
     @Column(nullable = false) private String name;
     @Column(nullable = false, unique = true) private String code;

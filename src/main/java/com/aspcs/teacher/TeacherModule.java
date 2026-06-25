@@ -83,6 +83,7 @@ interface TeacherRepository extends JpaRepository<Teacher, UUID> {
 class TeacherService {
     private final TeacherRepository repo;
     private final PasswordEncoder   encoder;
+    private final com.aspcs.auth.AdminUserRepository adminUserRepository;
 
     public Page<Teacher> getAll(int page, int size, String search, String dept) {
         Pageable p = PageRequest.of(page, size, Sort.by("fullName"));
@@ -110,7 +111,32 @@ class TeacherService {
                 .username(req.employeeId)
                 .password(encoder.encode(req.employeeId + "@aspcs"))
                 .active(true).build();
-        return repo.save(t);
+        Teacher saved = repo.save(t);
+        provisionLogin(saved, req.email);
+        return saved;
+    }
+
+    // Creates the admin_users row that lets this teacher log into the ERP.
+    // Login email falls back to a synthetic address if the teacher has none,
+    // since admin_users.email is unique + not-null. Default password is the
+    // same convention as the teacher's own record: employeeId@aspcs.
+    private void provisionLogin(Teacher t, String preferredEmail) {
+        String loginEmail = (preferredEmail != null && !preferredEmail.isBlank())
+                ? preferredEmail
+                : t.getEmployeeId().toLowerCase() + "@staff.aspcspatna.ac.in";
+
+        if (adminUserRepository.existsByEmail(loginEmail)) {
+            loginEmail = t.getEmployeeId().toLowerCase() + "@staff.aspcspatna.ac.in";
+        }
+
+        com.aspcs.auth.entity.AdminUser login = com.aspcs.auth.entity.AdminUser.builder()
+                .name(t.getFullName())
+                .email(loginEmail)
+                .password(encoder.encode(t.getEmployeeId() + "@aspcs"))
+                .role(com.aspcs.auth.entity.AdminUser.Role.TEACHER)
+                .teacherId(t.getId())
+                .build();
+        adminUserRepository.save(login);
     }
 
     public Teacher update(UUID id, CreateTeacherRequest req) {
@@ -122,7 +148,10 @@ class TeacherService {
         return repo.save(t);
     }
 
-    public void delete(UUID id) { repo.deleteById(id); }
+    public void delete(UUID id) {
+        adminUserRepository.findByTeacherId(id).ifPresent(adminUserRepository::delete);
+        repo.deleteById(id);
+    }
 
     public java.util.Map<String, Long> getStats() {
         return java.util.Map.of(

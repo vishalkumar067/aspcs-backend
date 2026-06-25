@@ -22,7 +22,7 @@ import java.util.UUID;
 @Entity
 @Table(name = "students")
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor
-class Student {
+public class Student {
     @Id @GeneratedValue(strategy = GenerationType.UUID) private UUID id;
 
     @Column(name = "admission_no", nullable = false, unique = true) private String admissionNo;
@@ -90,9 +90,11 @@ class StudentRequest {
 }
 
 // ─── Repository ──────────────────────────────────────────────────────────────
-interface StudentRepository extends JpaRepository<Student, UUID> {
+public interface StudentRepository extends JpaRepository<Student, UUID> {
     Page<Student> findAllByOrderByCreatedAtDesc(Pageable p);
     Page<Student> findByCurrentClassOrderByFullNameAsc(String cls, Pageable p);
+    java.util.List<Student> findByCurrentClassAndSectionOrderByFullNameAsc(String cls, String section);
+    java.util.List<Student> findByCurrentClassAndSectionAndStatusOrderByFullNameAsc(String cls, String section, String status);
 
     @Query("SELECT s FROM Student s WHERE " +
            "LOWER(s.fullName) LIKE LOWER(CONCAT('%',:q,'%')) OR " +

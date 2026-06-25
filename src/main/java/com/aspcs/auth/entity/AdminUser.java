@@ -22,7 +22,7 @@ public class AdminUser implements UserDetails {
 
     // ─── Role enum (keeps AuthService + AuthDTOs working) ────────────────────
     public enum Role {
-        SUPER_ADMIN, ADMIN, EDITOR
+        SUPER_ADMIN, ADMIN, EDITOR, TEACHER
     }
 
     @Id
@@ -42,6 +42,10 @@ public class AdminUser implements UserDetails {
     @Column(nullable = false)
     @Builder.Default
     private Role role = Role.EDITOR;
+
+    // Links a TEACHER-role login to its teachers row. Null for all other roles.
+    @Column(name = "teacher_id")
+    private UUID teacherId;
 
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

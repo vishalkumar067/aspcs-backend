@@ -54,6 +54,23 @@ public class CloudinaryService {
         return (String) result.get("secure_url");
     }
 
+    // For server-generated files (e.g. PDFs built in-memory) that don't
+    // arrive as a MultipartFile from a user upload.
+    public String uploadBytes(byte[] bytes, String folder, String publicId) throws IOException {
+        log.info("Uploading generated file to Cloudinary folder: {} (publicId={})", folder, publicId);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = cloudinary.uploader().upload(
+                bytes,
+                ObjectUtils.asMap(
+                        "folder", folder,
+                        "public_id", publicId,
+                        "resource_type", "raw",
+                        "overwrite", true
+                )
+        );
+        return (String) result.get("secure_url");
+    }
+
     public void deleteFile(String publicId) {
         try {
             cloudinary.uploader().destroy(publicId, ObjectUtils.emptyMap());

@@ -62,6 +62,26 @@ public class AuthService implements UserDetailsService {
         return new TokenDTO(jwtService.generateAccessToken(user), refreshToken);
     }
 
+    // Requires the current password, not just the new one — otherwise
+    // anyone who steals a still-valid access token (e.g. from a shared
+    // computer, or an XSS-stolen token) could lock the real owner out by
+    // changing their password without ever knowing it. Re-checking the
+    // current password closes that gap at the cost of one extra prompt.
+    public void changePassword(AdminUser currentUser, ChangePasswordRequest request) {
+        if (request.newPassword == null || request.newPassword.length() < 8) {
+            throw new IllegalArgumentException("New password must be at least 8 characters");
+        }
+        if (!passwordEncoder.matches(request.currentPassword, currentUser.getPassword())) {
+            throw new IllegalArgumentException("Current password is incorrect");
+        }
+        if (passwordEncoder.matches(request.newPassword, currentUser.getPassword())) {
+            throw new IllegalArgumentException("New password must be different from the current password");
+        }
+        currentUser.setPassword(passwordEncoder.encode(request.newPassword));
+        adminUserRepository.save(currentUser);
+        log.info("Password changed for user {}", currentUser.getEmail());
+    }
+
     @PostConstruct
     public void seedAdmin() {
         if (!adminUserRepository.existsByEmail("admin@aspcs.edu.in")) {

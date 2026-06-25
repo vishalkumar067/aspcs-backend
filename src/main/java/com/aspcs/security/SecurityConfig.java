@@ -24,9 +24,10 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @RequiredArgsConstructor
 public class SecurityConfig {
 
-    private final AuthService     authService;
-    private final JwtAuthFilter   jwtAuthFilter;
-    private final PasswordEncoder passwordEncoder;
+    private final AuthService          authService;
+    private final JwtAuthFilter        jwtAuthFilter;
+    private final LoginRateLimitFilter loginRateLimitFilter;
+    private final PasswordEncoder      passwordEncoder;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -36,6 +37,7 @@ public class SecurityConfig {
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                .requestMatchers(HttpMethod.POST, "/auth/change-password").authenticated()
                 .requestMatchers("/auth/**").permitAll()
                 .requestMatchers(HttpMethod.GET,  "/notices/public/**").permitAll()
                 .requestMatchers(HttpMethod.GET,  "/gallery/public/**").permitAll()
@@ -44,9 +46,11 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/careers/jobs/*/apply").permitAll()
                 .requestMatchers(HttpMethod.POST, "/admissions").permitAll()
                 .requestMatchers(HttpMethod.POST, "/tc/submit").permitAll()
+                .requestMatchers(HttpMethod.GET,  "/progress-reports/reports/verify/**").permitAll()
                 .anyRequest().authenticated()
             )
             .authenticationProvider(authenticationProvider())
+            .addFilterBefore(loginRateLimitFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

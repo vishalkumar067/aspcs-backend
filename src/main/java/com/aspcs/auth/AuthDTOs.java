@@ -22,12 +22,14 @@ class UserDTO {
     public String name;
     public String email;
     public String role;
+    public String teacherId;
 
     public UserDTO(com.aspcs.auth.entity.AdminUser u) {
-        this.id   = u.getId().toString();
-        this.name = u.getName();
-        this.email= u.getEmail();
-        this.role = u.getRole().name();
+        this.id    = u.getId().toString();
+        this.name  = u.getName();
+        this.email = u.getEmail();
+        this.role  = u.getRole().name();
+        this.teacherId = u.getTeacherId() != null ? u.getTeacherId().toString() : null;
     }
 }
 
@@ -44,4 +46,9 @@ class TokenDTO {
 
 class RefreshRequest {
     public String refreshToken;
+}
+
+class ChangePasswordRequest {
+    public String currentPassword;
+    public String newPassword;
 }

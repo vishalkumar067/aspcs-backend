@@ -33,6 +33,14 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.ok(new UserDTO(user)));
     }
 
+    @PostMapping("/change-password")
+    public ResponseEntity<ApiResponse<Void>> changePassword(
+            @AuthenticationPrincipal AdminUser user,
+            @RequestBody ChangePasswordRequest request) {
+        authService.changePassword(user, request);
+        return ResponseEntity.ok(ApiResponse.ok(null, "Password changed successfully"));
+    }
+
     @PostMapping("/logout")
     public ResponseEntity<ApiResponse<Void>> logout() {
         // JWT is stateless — client just discards the token
