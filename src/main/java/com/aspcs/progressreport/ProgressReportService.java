@@ -25,6 +25,7 @@ import java.util.stream.Collectors;
 class ReportDispatchOutcome {
     public UUID studentId;
     public String studentName;
+    public UUID reportId; // set only if pdfGenerated is true; frontend uses this to build the download link
     public boolean pdfGenerated;
     public boolean emailSent;
     public boolean whatsappSent;
@@ -81,6 +82,7 @@ class ProgressReportService {
         try {
             ProgressReport report = generateReport(assessment, student, cycle);
             outcome.pdfGenerated = true;
+            outcome.reportId = report.getId();
 
             if (sendEmail) {
                 EmailResult emailResult = dispatchEmail(report, assessment, student, cycle);

@@ -90,7 +90,10 @@ class StudentImportController {
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
-            headers.setContentDispositionFormData("attachment", "student_import_template.xlsx");
+            headers.setContentDisposition(
+                    ContentDisposition.attachment()
+                            .filename("student_import_template.xlsx", java.nio.charset.StandardCharsets.UTF_8)
+                            .build());
             return new ResponseEntity<>(out.toByteArray(), headers, HttpStatus.OK);
         }
     }
