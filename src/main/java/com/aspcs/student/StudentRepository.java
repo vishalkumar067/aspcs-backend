@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface StudentRepository extends JpaRepository<Student, UUID> {
@@ -14,6 +15,7 @@ public interface StudentRepository extends JpaRepository<Student, UUID> {
     Page<Student> findByCurrentClassOrderByFullNameAsc(String cls, Pageable p);
     List<Student> findByCurrentClassAndSectionOrderByFullNameAsc(String cls, String section);
     List<Student> findByCurrentClassAndSectionAndStatusOrderByFullNameAsc(String cls, String section, String status);
+    Optional<Student> findByAdmissionNoIgnoreCase(String admissionNo);
 
     @Query("SELECT s FROM Student s WHERE " +
            "LOWER(s.fullName) LIKE LOWER(CONCAT('%',:q,'%')) OR " +
