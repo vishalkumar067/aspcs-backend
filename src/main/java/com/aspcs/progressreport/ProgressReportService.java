@@ -62,6 +62,9 @@ class ProgressReportService {
     @Value("${app.frontend.base-url:https://aspcspatna.ac.in}")
     private String frontendBaseUrl;
 
+    @Value("${app.backend.base-url:https://aspcs-backend-production.up.railway.app/api/v1}")
+    private String backendBaseUrl;
+
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("dd MMM yyyy");
 
     // ─── Single-student generate + dispatch ───────────────────
@@ -152,7 +155,8 @@ class ProgressReportService {
                 .toList();
 
         String qrCode = UUID.randomUUID().toString();
-        String verificationUrl = frontendBaseUrl + "/verify-report/" + qrCode;
+        // QR scans go directly to the PDF — no login required, no intermediate page.
+        String verificationUrl = backendBaseUrl + "/progress-reports/reports/verify/" + qrCode + "/pdf";
 
         String attendanceDisplay = assessment.getAttendancePct() != null
                 ? assessment.getAttendancePct() + "%" : "-";

@@ -68,6 +68,24 @@ class ProgressReportLookupService {
                         "No report found for this verification code"));
     }
 
+    // Public: anyone scanning the QR on a printed report gets the PDF directly,
+    // no login required. This is the whole point of the QR — a parent can scan
+    // it and immediately see the report on their phone.
+    public DownloadablePdf downloadPdfByQrCode(String qrCode) throws java.io.IOException {
+        ProgressReport report = verifyByQrCode(qrCode);
+        if (report.getPdfUrl() == null) {
+            throw new IllegalStateException("This report has no PDF file recorded");
+        }
+        var student = studentRepo.findById(report.getStudentId())
+                .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException("Student not found"));
+        var cycle = cycleRepo.findById(report.getCycleId())
+                .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException("Reporting cycle not found"));
+
+        byte[] bytes = fetchBytes(report.getPdfUrl());
+        String filename = buildFilename(student.getFullName(), cycle.getName());
+        return new DownloadablePdf(bytes, filename);
+    }
+
     // Proxies the PDF through our own backend rather than redirecting to the
     // raw Cloudinary URL, for two reasons: (1) PDFs are uploaded as
     // resource_type=raw, and Cloudinary's fl_attachment custom-filename
@@ -151,5 +169,19 @@ class ProgressReportLookupController {
     @GetMapping("/verify/{qrCode}")
     public ResponseEntity<ApiResponse<ProgressReport>> verify(@PathVariable String qrCode) {
         return ResponseEntity.ok(ApiResponse.ok(service.verifyByQrCode(qrCode)));
+    }
+
+    // Public — anyone scanning the QR code on a printed report gets the PDF
+    // directly in their browser/phone. No login required.
+    @GetMapping("/verify/{qrCode}/pdf")
+    public ResponseEntity<byte[]> verifyAndDownload(@PathVariable String qrCode) throws java.io.IOException {
+        DownloadablePdf pdf = service.downloadPdfByQrCode(qrCode);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_PDF);
+        headers.setContentDisposition(
+                org.springframework.http.ContentDisposition.inline()
+                        .filename(pdf.filename(), java.nio.charset.StandardCharsets.UTF_8)
+                        .build());
+        return new ResponseEntity<>(pdf.bytes(), headers, org.springframework.http.HttpStatus.OK);
     }
 }

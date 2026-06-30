@@ -8,15 +8,16 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
-import java.util.UUID;
+import java.util.*;
 
-// ─── DTO ───────────────────────────────────────────────────────
+// ─── DTOs ──────────────────────────────────────────────────────
 class RemarksRequest {
-    public UUID studentId;
-    public String studentFirstName;   // used to personalize the remark
+    public String studentFirstName;
     public BigDecimal attendancePct;
-    public BigDecimal behaviourOverall;   // 1-5 scale
-    public String overallPerformance;     // OUTSTANDING/EXCELLENT/GOOD/AVERAGE/NEEDS_IMPROVEMENT
+    public BigDecimal behaviourOverall;
+    public String overallPerformance;
+    // Per-subject data: name -> rating/marks string (e.g. "EXCELLENT" or "85")
+    public Map<String, String> subjectPerformance;
 }
 
 class RemarksResponse {
@@ -25,50 +26,104 @@ class RemarksResponse {
 }
 
 // ─── Service ───────────────────────────────────────────────────
-// Deliberately rule-based rather than calling an external LLM API:
-// it's free, instant, fully deterministic (so a teacher editing one
-// student's remark never gets a surprising rewrite on resubmit), and
-// needs no new vendor credentials. Teachers can freely edit the
-// generated text before saving — this is a starting draft, not a
-// locked-in output.
 @Service
 class AiRemarksService {
 
+    private static final Set<String> HIGH = Set.of("OUTSTANDING", "EXCELLENT");
+    private static final Set<String> LOW  = Set.of("AVERAGE", "NEEDS_IMPROVEMENT");
+
     public String generate(RemarksRequest req) {
         String name = (req.studentFirstName != null && !req.studentFirstName.isBlank())
-                ? req.studentFirstName
-                : "The student";
+                ? req.studentFirstName : "The student";
 
         String performance = req.overallPerformance != null
-                ? req.overallPerformance
-                : inferPerformance(req);
+                ? req.overallPerformance : inferPerformance(req);
 
         boolean lowAttendance = req.attendancePct != null
                 && req.attendancePct.compareTo(new BigDecimal("75")) < 0;
 
-        return switch (performance) {
-            case "OUTSTANDING" -> name + " has demonstrated outstanding academic performance during " +
-                    "this reporting cycle. Attendance and classroom participation are highly commendable, " +
-                    "and this consistency should continue to be encouraged.";
+        // Categorize subjects into strong and weak
+        List<String> strongSubjects = new ArrayList<>();
+        List<String> weakSubjects = new ArrayList<>();
+        if (req.subjectPerformance != null) {
+            for (Map.Entry<String, String> e : req.subjectPerformance.entrySet()) {
+                String val = e.getValue();
+                if (val == null || val.isBlank()) continue;
+                String upper = val.toUpperCase().trim();
+                if (HIGH.contains(upper) || isHighMarks(val)) {
+                    strongSubjects.add(e.getKey());
+                } else if (LOW.contains(upper) || isLowMarks(val)) {
+                    weakSubjects.add(e.getKey());
+                }
+            }
+        }
 
-            case "EXCELLENT" -> name + " has demonstrated excellent academic performance during this " +
-                    "reporting cycle. " + (lowAttendance
-                        ? "Improving attendance would help sustain this momentum."
-                        : "Participation and attendance are highly commendable.");
+        StringBuilder sb = new StringBuilder();
 
-            case "GOOD" -> name + " has shown good progress this reporting cycle, with solid " +
-                    "performance across most areas. " + (lowAttendance
-                        ? "More regular attendance would support further improvement."
-                        : "Continued consistency will help build on this foundation.");
+        // Opening line based on overall performance
+        switch (performance) {
+            case "OUTSTANDING" -> sb.append(name).append(" has demonstrated outstanding academic performance this reporting cycle.");
+            case "EXCELLENT"   -> sb.append(name).append(" has shown excellent progress across the curriculum this reporting cycle.");
+            case "GOOD"        -> sb.append(name).append(" has shown good and steady progress this reporting cycle.");
+            case "AVERAGE"     -> sb.append(name).append(" is making gradual progress and showing effort this reporting cycle.");
+            default            -> sb.append(name).append(" has scope for significant improvement this reporting cycle.");
+        }
 
-            case "AVERAGE" -> name + " is making steady progress. Continued practice and more " +
-                    "regular participation will help improve academic outcomes" +
-                    (lowAttendance ? ", and attendance in particular needs attention." : ".");
+        // Subject-specific praise
+        if (!strongSubjects.isEmpty()) {
+            sb.append(" Particularly strong performance in ");
+            sb.append(joinNaturally(strongSubjects));
+            sb.append(".");
+        }
 
-            default -> name + " would benefit from greater focus on attendance, homework completion, " +
-                    "and classroom engagement. With consistent support at home and school, meaningful " +
-                    "improvement is achievable next cycle.";
-        };
+        // Subject-specific improvement areas
+        if (!weakSubjects.isEmpty()) {
+            sb.append(" Additional practice and focus would help improve results in ");
+            sb.append(joinNaturally(weakSubjects));
+            sb.append(".");
+        }
+
+        // Attendance
+        if (req.attendancePct != null) {
+            if (lowAttendance) {
+                sb.append(" Attendance at ").append(req.attendancePct).append("% needs improvement — regular attendance is key to sustained progress.");
+            } else if (req.attendancePct.compareTo(new BigDecimal("90")) >= 0) {
+                sb.append(" Attendance is commendable.");
+            }
+        }
+
+        // Behaviour
+        if (req.behaviourOverall != null) {
+            double bv = req.behaviourOverall.doubleValue();
+            if (bv >= 4.0) {
+                sb.append(" Classroom discipline and participation are praiseworthy.");
+            } else if (bv < 3.0) {
+                sb.append(" Improved discipline and active participation in class activities would support better learning outcomes.");
+            }
+        }
+
+        // Closing encouragement
+        switch (performance) {
+            case "OUTSTANDING", "EXCELLENT" -> sb.append(" Keep up the excellent work!");
+            case "GOOD" -> sb.append(" With continued consistency, even better results are within reach.");
+            default -> sb.append(" With consistent effort at home and school, meaningful improvement is achievable.");
+        }
+
+        return sb.toString();
+    }
+
+    private String joinNaturally(List<String> items) {
+        if (items.size() == 1) return items.get(0);
+        if (items.size() == 2) return items.get(0) + " and " + items.get(1);
+        return String.join(", ", items.subList(0, items.size() - 1)) + ", and " + items.get(items.size() - 1);
+    }
+
+    private boolean isHighMarks(String val) {
+        try { return Double.parseDouble(val) >= 80; } catch (Exception e) { return false; }
+    }
+
+    private boolean isLowMarks(String val) {
+        try { return Double.parseDouble(val) < 50; } catch (Exception e) { return false; }
     }
 
     private String inferPerformance(RemarksRequest req) {
@@ -94,7 +149,7 @@ class AiRemarksController {
     private final AiRemarksService service;
 
     @PostMapping("/generate")
-    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','TEACHER')")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','EDITOR','TEACHER')")
     public ResponseEntity<ApiResponse<RemarksResponse>> generate(@RequestBody RemarksRequest req) {
         return ResponseEntity.ok(ApiResponse.ok(new RemarksResponse(service.generate(req))));
     }
