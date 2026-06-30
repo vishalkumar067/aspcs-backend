@@ -146,7 +146,7 @@ class ProgressReportService {
                     String value = s.getMarks() != null
                             ? s.getMarks().setScale(0, RoundingMode.HALF_UP) + " / " + (subj != null ? subj.getMaxMarks() : 100)
                             : s.getRating();
-                    return new SubjectRow(name, value);
+                    return new SubjectRow(name, value, s.getRemarks());
                 })
                 .sorted(Comparator.comparing(SubjectRow::subjectName))
                 .toList();

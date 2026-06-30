@@ -72,6 +72,7 @@ class AssessmentSubject {
     @Column(name = "subject_id", nullable = false)    private UUID subjectId;
     private BigDecimal marks;   // MARKS mode
     private String rating;      // RATING mode
+    @Column(columnDefinition = "TEXT") private String remarks; // per-subject feedback
     @Column(name = "created_at", updatable = false) private LocalDateTime createdAt;
     @Column(name = "updated_at") private LocalDateTime updatedAt;
     @PrePersist protected void onCreate() { createdAt = updatedAt = LocalDateTime.now(); }
@@ -97,6 +98,8 @@ class AssessmentRowRequest {
     // subjectId -> marks (MARKS mode) or rating string (RATING mode)
     public Map<UUID, BigDecimal> subjectMarks;
     public Map<UUID, String> subjectRatings;
+    // subjectId -> per-subject feedback/remarks
+    public Map<UUID, String> subjectRemarks;
 }
 
 // Bulk save payload: the whole grid for one class-section-cycle at once.
@@ -136,6 +139,7 @@ class GridRow {
     public String teacherRemarks;
     public Map<UUID, BigDecimal> subjectMarks   = new HashMap<>();
     public Map<UUID, String>     subjectRatings = new HashMap<>();
+    public Map<UUID, String>     subjectRemarks = new HashMap<>();
 }
 
 // ─── Repositories ──────────────────────────────────────────────
@@ -236,6 +240,7 @@ class AssessmentService {
                 for (AssessmentSubject sc : scoresByAssessment.getOrDefault(a.getId(), List.of())) {
                     if (sc.getMarks() != null) row.subjectMarks.put(sc.getSubjectId(), sc.getMarks());
                     if (sc.getRating() != null) row.subjectRatings.put(sc.getSubjectId(), sc.getRating());
+                    if (sc.getRemarks() != null) row.subjectRemarks.put(sc.getSubjectId(), sc.getRemarks());
                 }
             }
             return row;
@@ -301,9 +306,11 @@ class AssessmentService {
             subjectScoreRepo.deleteByAssessmentId(savedAssessment.getId());
             Map<UUID, BigDecimal> marksMap = row.subjectMarks != null ? row.subjectMarks : Map.of();
             Map<UUID, String> ratingsMap = row.subjectRatings != null ? row.subjectRatings : Map.of();
+            Map<UUID, String> remarksMap = row.subjectRemarks != null ? row.subjectRemarks : Map.of();
             Set<UUID> allSubjectIds = new HashSet<>();
             allSubjectIds.addAll(marksMap.keySet());
             allSubjectIds.addAll(ratingsMap.keySet());
+            allSubjectIds.addAll(remarksMap.keySet());
 
             for (UUID subjectId : allSubjectIds) {
                 AssessmentSubject sc = new AssessmentSubject();
@@ -311,6 +318,7 @@ class AssessmentService {
                 sc.setSubjectId(subjectId);
                 sc.setMarks(marksMap.get(subjectId));
                 sc.setRating(ratingsMap.get(subjectId));
+                sc.setRemarks(remarksMap.get(subjectId));
                 subjectScoreRepo.save(sc);
             }
 

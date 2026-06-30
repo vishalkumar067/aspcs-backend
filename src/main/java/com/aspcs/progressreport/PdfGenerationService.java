@@ -50,7 +50,7 @@ record ReportPdfData(
         String qrVerificationUrl
 ) {}
 
-record SubjectRow(String subjectName, String marksOrRating) {}
+record SubjectRow(String subjectName, String marksOrRating, String remarks) {}
 
 @Service
 @RequiredArgsConstructor
@@ -255,6 +255,22 @@ class PdfGenerationService {
                 cs.showText(row.marksOrRating() != null ? row.marksOrRating() : "-");
                 cs.endText();
                 y -= rowHeight;
+
+                // Per-subject remarks on an indented sub-line in smaller italic-style font
+                if (row.remarks() != null && !row.remarks().isBlank()) {
+                    setColor(cs, new int[]{0x8A, 0x6A, 0x6E}, false); // muted color
+                    List<String> remarkLines = wrapText(row.remarks(), regular, 8,
+                            PAGE_WIDTH - 2 * MARGIN - 20);
+                    for (String line : remarkLines) {
+                        cs.beginText();
+                        cs.setFont(regular, 8);
+                        cs.newLineAtOffset(colSubjectX + 10, y);
+                        cs.showText(line);
+                        cs.endText();
+                        y -= 11f;
+                    }
+                    setColor(cs, DARK, false);
+                }
             }
         }
         return y;
@@ -411,7 +427,7 @@ class PdfGenerationService {
                 d.presentDays(),
                 sanitizeForWinAnsi(d.attendancePct()),
                 d.subjects() == null ? null : d.subjects().stream()
-                        .map(s -> new SubjectRow(sanitizeForWinAnsi(s.subjectName()), sanitizeForWinAnsi(s.marksOrRating())))
+                        .map(s -> new SubjectRow(sanitizeForWinAnsi(s.subjectName()), sanitizeForWinAnsi(s.marksOrRating()), sanitizeForWinAnsi(s.remarks())))
                         .toList(),
                 d.disciplineScore(), d.homeworkScore(), d.participationScore(),
                 d.punctualityScore(), d.communicationScore(), d.teamworkScore(),
