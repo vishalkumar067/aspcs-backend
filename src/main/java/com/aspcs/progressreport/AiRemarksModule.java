@@ -2,6 +2,7 @@ package com.aspcs.progressreport;
 
 import com.aspcs.common.ApiResponse;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -14,6 +15,7 @@ import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
 import java.util.*;
+import java.util.stream.Collectors;
 
 // ─── Request DTO (matches frontend payload exactly) ────────────
 class RemarksRequest {
@@ -52,6 +54,7 @@ class GeminiResponse {
 @JsonIgnoreProperties(ignoreUnknown = true)
 class GeminiCandidate {
     public GeminiContent content;
+    @JsonProperty("finishReason") public String finishReason;
 }
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -62,6 +65,10 @@ class GeminiContent {
 @JsonIgnoreProperties(ignoreUnknown = true)
 class GeminiPart {
     public String text;
+    // Gemini 2.5+ thinking models return internal reasoning as parts
+    // with thought=true. These must be filtered out — they're not the
+    // actual remark, and including them produces garbled output.
+    public Boolean thought;
 }
 
 // ─── Service ───────────────────────────────────────────────────
@@ -95,9 +102,21 @@ class AiRemarksService {
             headers.setContentType(MediaType.APPLICATION_JSON);
             headers.set("x-goog-api-key", apiKey);
 
+            // ── Generation config ──
+            // thinkingBudget: 0 is critical — Gemini 2.5 Flash has thinking
+            // enabled by default, and thinking tokens are counted AGAINST
+            // maxOutputTokens. With the old maxOutputTokens=300, the model
+            // was spending 200-800 tokens on internal reasoning, leaving
+            // almost nothing for the actual remark text → truncated output.
+            // Setting thinkingBudget to 0 disables thinking entirely so all
+            // tokens go to the actual remark.
+            Map<String, Object> thinkingConfig = new LinkedHashMap<>();
+            thinkingConfig.put("thinkingBudget", 0);
+
             Map<String, Object> generationConfig = new LinkedHashMap<>();
-            generationConfig.put("temperature", 1.05);
-            generationConfig.put("maxOutputTokens", 300);
+            generationConfig.put("temperature", 0.95);
+            generationConfig.put("maxOutputTokens", 1024);
+            generationConfig.put("thinkingConfig", thinkingConfig);
 
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("contents", List.of(
@@ -112,17 +131,32 @@ class AiRemarksService {
 
             if (gemini.candidates != null && !gemini.candidates.isEmpty()) {
                 GeminiCandidate candidate = gemini.candidates.get(0);
+
+                // Log if the model hit the token limit — helps diagnose
+                // future truncation issues without guessing.
+                if ("MAX_TOKENS".equals(candidate.finishReason)) {
+                    log.warn("Gemini hit MAX_TOKENS — response may be truncated. " +
+                             "Increase maxOutputTokens or simplify the prompt.");
+                }
+
                 if (candidate.content != null && candidate.content.parts != null) {
+                    // Join ALL non-thought text parts. The old code used
+                    // findFirst() which could grab a thinking part (internal
+                    // reasoning, not the actual remark) or miss text split
+                    // across multiple parts.
                     String raw = candidate.content.parts.stream()
-                            .filter(p -> p.text != null)
+                            .filter(p -> p.text != null && !p.text.isBlank())
+                            .filter(p -> p.thought == null || !p.thought)
                             .map(p -> p.text)
-                            .findFirst()
-                            .orElse("");
-                    return raw.strip().replaceAll("^\"|\"$", "").strip();
+                            .collect(Collectors.joining(" "));
+
+                    if (!raw.isBlank()) {
+                        return cleanRemark(raw);
+                    }
                 }
             }
 
-            throw new RuntimeException("Empty response from Gemini");
+            throw new RuntimeException("Empty response from Gemini. The AI could not generate remarks — please try again.");
 
         } catch (org.springframework.web.client.HttpClientErrorException e) {
             log.error("Gemini API error {}: {}", e.getStatusCode(), e.getResponseBodyAsString());
@@ -136,6 +170,36 @@ class AiRemarksService {
             log.error("Failed to generate AI remarks", e);
             throw new RuntimeException("Failed to generate remarks: " + e.getMessage());
         }
+    }
+
+    // ─── Post-processing ───────────────────────────────────────
+    // Ensures the remark is clean, complete, and doesn't have artifacts
+    // from the model's output (quotes, trailing whitespace, incomplete
+    // last sentence).
+    private String cleanRemark(String raw) {
+        String text = raw.strip();
+        // Strip wrapping quotation marks the model sometimes adds
+        text = text.replaceAll("^\"|\"$", "").strip();
+        text = text.replaceAll("^'|'$", "").strip();
+        // Remove any markdown formatting
+        text = text.replaceAll("\\*\\*", "").replaceAll("\\*", "");
+
+        // If the remark doesn't end with proper punctuation, it was
+        // likely truncated. Trim back to the last complete sentence.
+        if (!text.isEmpty() && !text.matches(".*[.!?]$")) {
+            int lastPeriod = text.lastIndexOf('.');
+            int lastExcl   = text.lastIndexOf('!');
+            int lastQ      = text.lastIndexOf('?');
+            int lastEnd = Math.max(lastPeriod, Math.max(lastExcl, lastQ));
+            if (lastEnd > 0) {
+                text = text.substring(0, lastEnd + 1);
+            } else {
+                // No complete sentence at all — append a period
+                text = text + ".";
+            }
+        }
+
+        return text;
     }
 
     // ─── Prompt Engineering ────────────────────────────────────
@@ -195,6 +259,7 @@ class AiRemarksService {
         p.append("13. Do NOT start with the word \"Overall\" or \"The student\".\n");
         p.append("14. Match the writing style parameter: if formal, use polished language; if warm, use nurturing tone; if concise, keep it tight.\n");
         p.append("15. End with a forward-looking or encouraging closing that feels natural — never formulaic.\n");
+        p.append("16. IMPORTANT: Your remark MUST end with a complete sentence ending in a period. Never stop mid-sentence.\n");
 
         p.append("\nGenerate the remark now. Output ONLY the remark text, nothing else.");
 

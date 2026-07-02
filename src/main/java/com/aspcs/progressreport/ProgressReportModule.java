@@ -111,14 +111,16 @@ class ProgressReportLookupService {
         return new DownloadablePdf(bytes, filename);
     }
 
-    // "Rahul Kumar" + "Cycle 01 - July 2026" -> "Rahul_Kumar_Cycle_01_July_2026.pdf"
-    // Strips anything that's unsafe in a filename on Windows/macOS/Linux
-    // (most punctuation, slashes) rather than just spaces, since cycle
-    // names may contain dashes or other characters a teacher typed freely.
+    // "Rahul Kumar" + "Cycle 1" -> "Rahul Kumar - Cycle 1.pdf"
+    // Keeps spaces (modern browsers and OS's handle them fine in
+    // Content-Disposition), uses " - " as the separator per the
+    // school's required format, strips only genuinely unsafe chars.
     private String buildFilename(String studentName, String cycleName) {
-        String combined = studentName + "_" + cycleName;
-        String safe = combined.replaceAll("[^a-zA-Z0-9_\\- ]", "").trim().replaceAll("\\s+", "_");
-        return safe + ".pdf";
+        String safeName = (studentName != null ? studentName : "Student")
+                .replaceAll("[^a-zA-Z0-9 ._-]", "").trim();
+        String safeCycle = (cycleName != null ? cycleName : "Report")
+                .replaceAll("[^a-zA-Z0-9 ._-]", "").trim();
+        return safeName + " - " + safeCycle + ".pdf";
     }
 
     private byte[] fetchBytes(String url) throws java.io.IOException {
