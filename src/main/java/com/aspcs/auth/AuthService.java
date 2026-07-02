@@ -82,6 +82,96 @@ public class AuthService implements UserDetailsService {
         log.info("Password changed for user {}", currentUser.getEmail());
     }
 
+    // ─── User Management (admin-only) ─────────────────────────────────────
+
+    public java.util.List<UserListDTO> listAllUsers() {
+        return adminUserRepository.findAll(
+                org.springframework.data.domain.Sort.by(
+                        org.springframework.data.domain.Sort.Direction.DESC, "createdAt"))
+                .stream()
+                .map(UserListDTO::new)
+                .toList();
+    }
+
+    public AdminUser createUser(CreateUserRequest request) {
+        if (request.name == null || request.name.isBlank())
+            throw new IllegalArgumentException("Name is required");
+        if (request.email == null || request.email.isBlank())
+            throw new IllegalArgumentException("Email is required");
+        if (request.password == null || request.password.length() < 8)
+            throw new IllegalArgumentException("Password must be at least 8 characters");
+        if (request.role == null || request.role.isBlank())
+            throw new IllegalArgumentException("Role is required");
+
+        if (adminUserRepository.existsByEmail(request.email)) {
+            throw new IllegalArgumentException("A user with this email already exists");
+        }
+
+        AdminUser.Role role;
+        try {
+            role = AdminUser.Role.valueOf(request.role);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid role: " + request.role);
+        }
+
+        AdminUser user = AdminUser.builder()
+                .name(request.name)
+                .email(request.email)
+                .password(passwordEncoder.encode(request.password))
+                .role(role)
+                .build();
+        AdminUser saved = adminUserRepository.save(user);
+        log.info("User created: {} with role {}", saved.getEmail(), saved.getRole());
+        return saved;
+    }
+
+    public AdminUser updateUser(java.util.UUID userId, UpdateUserRequest request) {
+        AdminUser user = adminUserRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+        if (request.name != null && !request.name.isBlank()) user.setName(request.name);
+
+        if (request.email != null && !request.email.isBlank() && !request.email.equals(user.getEmail())) {
+            if (adminUserRepository.existsByEmail(request.email)) {
+                throw new IllegalArgumentException("A user with this email already exists");
+            }
+            user.setEmail(request.email);
+        }
+
+        if (request.role != null && !request.role.isBlank()) {
+            try {
+                user.setRole(AdminUser.Role.valueOf(request.role));
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException("Invalid role: " + request.role);
+            }
+        }
+
+        AdminUser saved = adminUserRepository.save(user);
+        log.info("User updated: {} → role {}", saved.getEmail(), saved.getRole());
+        return saved;
+    }
+
+    public void resetUserPassword(java.util.UUID userId, ResetPasswordRequest request) {
+        if (request.newPassword == null || request.newPassword.length() < 8) {
+            throw new IllegalArgumentException("Password must be at least 8 characters");
+        }
+        AdminUser user = adminUserRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        user.setPassword(passwordEncoder.encode(request.newPassword));
+        adminUserRepository.save(user);
+        log.info("Password reset by admin for user {}", user.getEmail());
+    }
+
+    public void deleteUser(java.util.UUID userId, AdminUser actingAdmin) {
+        if (userId.equals(actingAdmin.getId())) {
+            throw new IllegalArgumentException("You cannot delete your own account");
+        }
+        AdminUser user = adminUserRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        adminUserRepository.delete(user);
+        log.info("User deleted: {} by {}", user.getEmail(), actingAdmin.getEmail());
+    }
+
     @PostConstruct
     public void seedAdmin() {
         if (!adminUserRepository.existsByEmail("admin@aspcs.edu.in")) {

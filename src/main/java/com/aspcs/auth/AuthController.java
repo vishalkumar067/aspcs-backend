@@ -46,4 +46,43 @@ public class AuthController {
         // JWT is stateless — client just discards the token
         return ResponseEntity.ok(ApiResponse.ok(null, "Logged out successfully"));
     }
+
+    // ─── User Management (SUPER_ADMIN / ADMIN only) ────────────────────────
+
+    @GetMapping("/users")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<java.util.List<UserListDTO>>> listUsers() {
+        return ResponseEntity.ok(ApiResponse.ok(authService.listAllUsers()));
+    }
+
+    @PostMapping("/users")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<UserDTO>> createUser(@RequestBody CreateUserRequest request) {
+        var user = authService.createUser(request);
+        return ResponseEntity.ok(ApiResponse.ok(new UserDTO(user), "User created successfully"));
+    }
+
+    @PutMapping("/users/{id}")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<UserDTO>> updateUser(
+            @PathVariable java.util.UUID id, @RequestBody UpdateUserRequest request) {
+        var user = authService.updateUser(id, request);
+        return ResponseEntity.ok(ApiResponse.ok(new UserDTO(user), "User updated successfully"));
+    }
+
+    @PostMapping("/users/{id}/reset-password")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<Void>> resetPassword(
+            @PathVariable java.util.UUID id, @RequestBody ResetPasswordRequest request) {
+        authService.resetUserPassword(id, request);
+        return ResponseEntity.ok(ApiResponse.ok(null, "Password reset successfully"));
+    }
+
+    @DeleteMapping("/users/{id}")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<Void>> deleteUser(
+            @PathVariable java.util.UUID id, @AuthenticationPrincipal AdminUser admin) {
+        authService.deleteUser(id, admin);
+        return ResponseEntity.ok(ApiResponse.ok(null, "User deleted successfully"));
+    }
 }

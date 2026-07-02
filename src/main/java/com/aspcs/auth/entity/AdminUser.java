@@ -22,7 +22,7 @@ public class AdminUser implements UserDetails {
 
     // ─── Role enum (keeps AuthService + AuthDTOs working) ────────────────────
     public enum Role {
-        SUPER_ADMIN, ADMIN, EDITOR, TEACHER
+        SUPER_ADMIN, ADMIN, EDITOR, TEACHER, STUDENT
     }
 
     @Id

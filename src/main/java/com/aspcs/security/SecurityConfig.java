@@ -47,6 +47,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/admissions").permitAll()
                 .requestMatchers(HttpMethod.POST, "/tc/submit").permitAll()
                 .requestMatchers(HttpMethod.GET,  "/progress-reports/reports/verify/**").permitAll()
+                .requestMatchers(HttpMethod.POST, "/chat").permitAll()
                 .anyRequest().authenticated()
             )
             .authenticationProvider(authenticationProvider())
